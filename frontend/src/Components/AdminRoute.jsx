@@ -5,7 +5,6 @@ const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Show loading state while checking authentication
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -17,17 +16,14 @@ const AdminRoute = ({ children }) => {
     );
   }
 
-  // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Redirect to quizzes if not admin
   if (user.role !== "admin") {
     return <Navigate to="/quizzes" replace />;
   }
 
-  // Render the admin component
   return children;
 };
 

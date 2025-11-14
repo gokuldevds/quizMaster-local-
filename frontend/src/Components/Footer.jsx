@@ -25,29 +25,24 @@ const Footer = () => (
         <div>
           <h4 className="font-semibold text-gray-700 mb-2">Contact Us</h4>
           <div className="flex flex-col gap-1 text-sm text-gray-600">
-            <a href="mailto:support@quizmaster.com" className="hover:text-blue-600 transition">support@quizmaster.com</a>
-            <span>+1 (555) 123-4567</span>
-            <span>123 Quiz St, Knowledge City</span>
+            <a href="mailto:support@quizmaster.com" className="hover:text-blue-600 transition">mail.quizmasterai@gmail.com</a>
+            <span>+91 77369 86418</span>
+            <span>ICT academy of Kerala,Thiruvananthapuram Kerala, India</span>
           </div>
         </div>
         {/* Socials */}
-        <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Follow Us</h4>
-          <div className="flex gap-3">
-            <a href="#" className="hover:text-blue-600 transition" title="Twitter" aria-label="Twitter">
-              <Twitter className="w-6 h-6" />
-            </a>
-            <a href="#" className="hover:text-blue-600 transition" title="Instagram" aria-label="Instagram">
-              <Instagram className="w-6 h-6" />
-            </a>
-            <a href="#" className="hover:text-blue-600 transition" title="Facebook" aria-label="Facebook">
-              <Facebook className="w-6 h-6" />
-            </a>
-          </div>
-        </div>
+        
       </div>
       <div className="text-xs text-gray-400 mt-4 md:mt-0 text-center w-full md:w-auto">
-        Made with <span className="text-red-500">♥</span> by our team
+        Made with <span className="text-red-500">♥</span> by
+        <span>
+          <br></br>
+          Roshan Wilson
+          <br></br>
+          Aleena CB
+          <br></br>
+          Gokul Dev D S
+        </span>
       </div>
     </div>
   </footer>

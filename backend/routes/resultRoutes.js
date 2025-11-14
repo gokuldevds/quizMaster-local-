@@ -3,12 +3,13 @@ const mongoose = require("mongoose");
 const Result = require("../models/resultModel");
 const User = require("../models/userModel");
 const { protect } = require("../middleware/authMiddleware");
+const { updateUserQuizStats, calculateAndUpdateRanks } = require("../utils/rankCalculator");
 
 const router = express.Router();
 
 /**
  * @route   POST /results/submit
- * @desc    Save a user's quiz result
+ * @desc    Save a user's quiz result and update statistics
  * @access  Private
  */
 router.post("/submit", protect, async (req, res) => {
@@ -29,6 +30,13 @@ router.post("/submit", protect, async (req, res) => {
       totalQuestions,
       correctAnswers,
     });
+
+    // Update user's quiz statistics
+    await updateUserQuizStats(req.user._id);
+
+    // Recalculate all ranks (this ensures leaderboard stays accurate)
+    // Note: In production, you might want to do this asynchronously or batch it
+    await calculateAndUpdateRanks();
 
     res.status(201).json({
       message: "Result submitted successfully",
@@ -61,89 +69,45 @@ router.get("/my-results", protect, async (req, res) => {
 
 /**
  * @route   GET /results/leaderboard
- * @desc    Get top performers by total score with rankings
+ * @desc    Get top performers by total score with rankings - uses stored stats from database
  * @access  Public
  */
 router.get("/leaderboard", async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10; // Allow custom limit, default 10
+    const limit = parseInt(req.query.limit) || 100; // Default to 100 to show more users
     
-    const leaderboard = await Result.aggregate([
-      // 1️⃣ Filter out invalid data
-      {
-        $match: {
-          user: { $exists: true, $ne: null },
-          score: { $exists: true, $ne: null },
-        },
-      },
-      // 2️⃣ Get each user's best score per quiz
-      {
-        $group: {
-          _id: { user: "$user", quiz: "$quiz" },
-          bestScore: { $max: "$score" },
-        },
-      },
-      // 3️⃣ Sum total score per user
-      {
-        $group: {
-          _id: "$_id.user",
-          totalScore: { $sum: "$bestScore" },
-          quizzesCompleted: { $sum: 1 },
-        },
-      },
-      // 4️⃣ Filter users with valid scores
-      {
-        $match: {
-          totalScore: { $gt: 0 },
-        },
-      },
-      // 5️⃣ Join with users collection
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "user",
-        },
-      },
-      // 6️⃣ Flatten user array
-      {
-        $unwind: {
-          path: "$user",
-          preserveNullAndEmptyArrays: false, // Only include users that exist
-        },
-      },
-      // 7️⃣ Add readable user fields
-      {
-        $addFields: {
-          name: { $ifNull: ["$user.name", "Unknown User"] },
-          username: {
-            $ifNull: [
-              { $arrayElemAt: [{ $split: ["$user.email", "@"] }, 0] },
-              "unknown",
-            ],
-          },
-          email: { $ifNull: ["$user.email", "N/A"] },
-        },
-      },
-      // 8️⃣ Final projection
-      {
-        $project: {
-          _id: 0,
-          name: 1,
-          username: 1,
-          email: 1,
-          totalScore: { $round: ["$totalScore", 2] }, // Round to 2 decimal places
-          quizzesCompleted: 1,
-        },
-      },
-      // 9️⃣ Sort by total score (descending), then by quizzes completed (descending)
-      { $sort: { totalScore: -1, quizzesCompleted: -1 } },
-      // 🔟 Limit results
-      { $limit: limit },
-    ]);
+    // Get all users with their stored quiz statistics (excluding admins)
+    // Sort by rank (ascending), then by totalScore, quizzesAttended, averageScore
+    const users = await User.find({ role: { $ne: "admin" } })
+      .select("name email quizStats")
+      .sort({
+        "quizStats.rank": 1, // Primary sort by rank
+        "quizStats.totalScore": -1, // Secondary sort by total score
+        "quizStats.quizzesAttended": -1, // Tertiary sort by quizzes attended
+        "quizStats.averageScore": -1, // Quaternary sort by average score
+      })
+      .limit(limit)
+      .lean();
 
-    res.status(200).json(leaderboard);
+    // Format leaderboard data
+    const leaderboard = users.map((user) => {
+      const stats = user.quizStats || {};
+      return {
+        name: user.name || "Unknown User",
+        email: user.email || "N/A",
+        totalScore: stats.totalScore || 0,
+        quizzesCompleted: stats.quizzesAttended || 0,
+        avgScore: stats.averageScore || 0,
+        rank: stats.rank || null,
+      };
+    });
+
+    // Filter out users with no quiz attempts (rank is null and totalScore is 0)
+    const activeLeaderboard = leaderboard.filter(
+      (user) => user.quizzesCompleted > 0 || user.totalScore > 0
+    );
+
+    res.status(200).json(activeLeaderboard);
   } catch (err) {
     console.error("❌ Leaderboard error:", err.message);
     res.status(500).json({ message: "Failed to fetch leaderboard", error: err.message });

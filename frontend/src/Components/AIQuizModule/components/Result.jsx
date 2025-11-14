@@ -7,7 +7,6 @@ function ResultScreen({ userAnswers, onRestartQuiz }) {
 
   return (
     <section className="result-screen bg-white rounded-2xl shadow-lg p-8 md:p-12">
-      {/* Header */}
       <div className="text-center mb-10">
         {correctAnswersCount === userAnswers.length ? (
           <div className="mb-4">
@@ -29,7 +28,6 @@ function ResultScreen({ userAnswers, onRestartQuiz }) {
           </div>
         )}
         
-        {/* Score Display */}
         <div className="inline-block bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl px-8 py-4 mb-4">
           <p className="text-5xl font-extrabold text-indigo-700 mb-1">{percentage}%</p>
           <p className="text-gray-600 text-lg">
@@ -39,7 +37,6 @@ function ResultScreen({ userAnswers, onRestartQuiz }) {
         </div>
       </div>
 
-      {/* Answers List */}
       <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
         {userAnswers.map((answer, index) => {
           const isCorrect = answer.userAnswer === answer.question.correct_answer;
@@ -81,7 +78,6 @@ function ResultScreen({ userAnswers, onRestartQuiz }) {
         })}
       </div>
 
-      {/* Restart Button */}
       <div className="text-center mt-10">
         <button
           onClick={onRestartQuiz}

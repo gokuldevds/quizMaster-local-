@@ -1,151 +1,26 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import axios from "axios";
-import QuizCard from "../Components/Quizcard";
+import axiosInstance from "../api/axiosInstance";
+import toast from "react-hot-toast";
 import { Clock, AlertCircle } from "lucide-react";
-
-const quizData = [
-  {
-    id: 1,
-    title: "React Basics",
-    timeLimit: 5, // minutes
-    quizQuestions: [
-      {
-        question: "What is a React component?",
-        options: ["A function", "A variable", "A class", "All of the above"],
-        correctAnswer: "All of the above"
-      },
-      {
-        question: "What hook is used for state management?",
-        options: ["useEffect", "useState", "useContext", "useReducer"],
-        correctAnswer: "useState"
-      },
-      {
-        question: "What is JSX?",
-        options: ["A CSS preprocessor", "A JavaScript extension", "A database", "A server"],
-        correctAnswer: "A JavaScript extension"
-      },
-    ]
-  },
-  {
-    id: 2,
-    title: "JavaScript Advanced",
-    timeLimit: 7,
-    quizQuestions: [
-      {
-        question: "Which method creates a new array from a filtered subset?",
-        options: ["map", "filter", "reduce", "forEach"],
-        correctAnswer: "filter"
-      },
-      {
-        question: "What is a closure?",
-        options: ["A function inside a function", "A variable", "A loop", "A class"],
-        correctAnswer: "A function inside a function"
-      },
-      {
-        question: "Which keyword declares a block-scoped variable?",
-        options: ["var", "let", "const", "static"],
-        correctAnswer: "let"
-      },
-    ]
-  },
-  {
-    id: 3,
-    title: "MongoDB Concepts",
-    timeLimit: 6,
-    quizQuestions: [
-      {
-        question: "What is MongoDB?",
-        options: ["Relational DB", "NoSQL DB", "Frontend framework", "Server"],
-        correctAnswer: "NoSQL DB"
-      },
-      {
-        question: "Which command inserts a document?",
-        options: ["insertOne", "addDoc", "putDoc", "create"],
-        correctAnswer: "insertOne"
-      },
-      {
-        question: "What is a collection?",
-        options: ["A table", "A group of documents", "A schema", "A query"],
-        correctAnswer: "A group of documents"
-      },
-    ]
-  },
-  {
-    id: 4,
-    title: "Node.js Fundamentals",
-    timeLimit: 5,
-    quizQuestions: [
-      {
-        question: "Node.js is based on which language?",
-        options: ["Python", "Java", "JavaScript", "C++"],
-        correctAnswer: "JavaScript"
-      },
-      {
-        question: "Which module is used for file operations?",
-        options: ["http", "fs", "path", "os"],
-        correctAnswer: "fs"
-      },
-      {
-        question: "What is npm?",
-        options: ["Node Package Manager", "Node Project Module", "New Programming Method", "None"],
-        correctAnswer: "Node Package Manager"
-      },
-    ]
-  },
-  {
-    id: 5,
-    title: "JavaScript Basics",
-    timeLimit: 4,
-    quizQuestions: [
-      {
-        question: "Which of the following is a JavaScript data type?",
-        options: ["Number", "String", "Boolean", "All of the above"],
-        correctAnswer: "All of the above"
-      },
-      {
-        question: "Which symbol is used for single-line comments?",
-        options: ["//", "/*", "<!--", "#"],
-        correctAnswer: "//"
-      },
-      {
-        question: "How do you declare a variable in JavaScript?",
-        options: ["var", "let", "const", "All of the above"],
-        correctAnswer: "All of the above"
-      },
-    ]
-  },
-  {
-    id: 6,
-    title: "HTML & CSS Essentials",
-    timeLimit: 5,
-    quizQuestions: [
-      {
-        question: "What does HTML stand for?",
-        options: ["Hyper Trainer Marking Language", "Hyper Text Markup Language", "Hyper Text Marketing Language", "Hyper Tool Markup Language"],
-        correctAnswer: "Hyper Text Markup Language"
-      },
-      {
-        question: "Which tag is used for the largest heading?",
-        options: ["<h1>", "<h6>", "<head>", "<header>"],
-        correctAnswer: "<h1>"
-      },
-      {
-        question: "Which property is used to change text color in CSS?",
-        options: ["font-color", "text-color", "color", "background-color"],
-        correctAnswer: "color"
-      },
-    ]
-  },
-];
+import Footer from "../Components/Footer";
 
 const Quiz = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  
-  // Redirect admins to admin dashboard
+  const [quiz, setQuiz] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const [startTime] = useState(Date.now());
+  const [isTimeUp, setIsTimeUp] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [answers, setAnswers] = useState([]);
+
   useEffect(() => {
     if (!authLoading && user && user.role === "admin") {
       navigate("/admin", { replace: true });
@@ -153,20 +28,64 @@ const Quiz = () => {
     }
   }, [user, authLoading, navigate]);
 
-  const quiz = quizData.find(q => q.id === Number(id));
-  const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [timeRemaining, setTimeRemaining] = useState(null);
-  const [startTime] = useState(Date.now());
-  const [isTimeUp, setIsTimeUp] = useState(false);
+  useEffect(() => {
+    const fetchQuiz = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setError("Please log in to take quizzes");
+          setLoading(false);
+          return;
+        }
 
-  // Initialize timer
+        const response = await axiosInstance.get(`/quizzes/${id}`);
+
+        const data = response.data;
+        const totalTimeSeconds = data.timeLimit ? Number(data.timeLimit) * 60 : 60;
+
+        const transformed = {
+          _id: data._id,
+          title: data.title,
+          totalTimeSeconds,
+          questions: Array.isArray(data.questions)
+            ? data.questions.map((q) => {
+                const correctOption = Array.isArray(q.options)
+                  ? q.options.find((o) => o.isCorrect)
+                  : null;
+                return {
+                  questionText: q.questionText,
+                  correct_answer: correctOption ? correctOption.text : "",
+                  incorrect_answers: Array.isArray(q.options)
+                    ? q.options.filter((o) => !o.isCorrect).map((o) => o.text)
+                    : [],
+                };
+              })
+            : [],
+        };
+
+        setQuiz(transformed);
+        setCurrentQuestion(0);
+        setAnswers([]);
+      } catch (err) {
+        console.error("Error loading quiz:", err);
+        setError(err.response?.data?.message || "Failed to load quiz");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (!authLoading && id) {
+      fetchQuiz();
+    }
+  }, [authLoading, id]);
+
   useEffect(() => {
     if (!quiz) return;
-    
-    const timeLimitMinutes = quiz.timeLimit || 10; // Default 10 minutes
-    const timeLimitSeconds = timeLimitMinutes * 60;
-    setTimeRemaining(timeLimitSeconds);
+
+    const totalTime = quiz.totalTimeSeconds;
+    setTimeRemaining(totalTime);
 
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
@@ -174,7 +93,6 @@ const Quiz = () => {
         if (prev <= 1) {
           setIsTimeUp(true);
           clearInterval(timer);
-          handleAutoSubmit();
           return 0;
         }
         return prev - 1;
@@ -184,91 +102,132 @@ const Quiz = () => {
     return () => clearInterval(timer);
   }, [quiz]);
 
-  if (!quiz) {
+  const shuffledOptions = useMemo(() => {
+    if (!quiz || !quiz.questions || quiz.questions.length === 0) return [];
+    const q = quiz.questions[currentQuestion];
+    const options = [...q.incorrect_answers];
+    const randomIndex = Math.floor(Math.random() * (options.length + 1));
+    options.splice(randomIndex, 0, q.correct_answer);
+    return options;
+  }, [currentQuestion, quiz]);
+
+  if (loading) {
     return (
-      <div className="p-8 max-w-md mx-auto">
-        <h2 className="text-2xl font-bold mb-6 text-gray-800">Quiz not found</h2>
-        <p>No quiz found for this topic.</p>
+      <div className="p-8 max-w-md mx-auto text-center">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+        <p className="text-gray-600">Loading quiz...</p>
       </div>
     );
   }
 
-  const total = quiz.quizQuestions.length;
-  const questionObj = quiz.quizQuestions[current];
+  if (error) {
+    return (
+      <div className="p-8 max-w-md mx-auto text-center">
+        <h2 className="text-2xl font-bold mb-4 text-gray-800">Unable to load quiz</h2>
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+          onClick={() => navigate("/quizzes")}
+        >
+          Back to Quizzes
+        </button>
+      </div>
+    );
+  }
+
+  if (!quiz || !quiz.questions || quiz.questions.length === 0) {
+    return (
+      <div className="p-8 max-w-md mx-auto text-center">
+        <h2 className="text-2xl font-bold mb-4">No questions available</h2>
+        <p className="text-gray-600 mb-4">This quiz doesn't contain any questions yet. Please contact the admin or try another quiz.</p>
+        <button className="bg-indigo-600 text-white px-4 py-2 rounded" onClick={() => navigate('/quizzes')}>Back to quizzes</button>
+      </div>
+    );
+  }
+
+  const totalQuestions = quiz.questions.length;
+  const currentQ = quiz.questions[currentQuestion];
 
   // Format time display
   const formatTime = (seconds) => {
+    if (seconds === null || seconds === undefined) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleSelect = (option) => {
-    if (!isTimeUp) {
-      setAnswers({ ...answers, [current]: option });
-    }
-  };
-
-  const handleAutoSubmit = async () => {
-    // Auto-submit when time is up
-    await handleSubmit(true);
-  };
-
-  const handleSubmit = async (autoSubmit = false) => {
-    const timeTaken = Math.floor((Date.now() - startTime) / 1000); // in seconds
-    
-    const correct = quiz.quizQuestions.reduce((acc, q, index) => {
-      return acc + (answers[index] === q.correctAnswer ? 1 : 0);
-    }, 0);
-    
-    const totalScore = Math.round((correct / total) * 100);
-    const results = quiz.quizQuestions.map((q, index) => ({
-      question: q.question,
-      answer: answers[index] || "Not answered",
-      isCorrect: answers[index] === q.correctAnswer,
-    }));
-
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/results/submit', {
-        quiz: quiz.id,
-        score: totalScore,
-        totalQuestions: total,
-        correctAnswers: correct,
-        timeTaken: timeTaken,
-      }, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (error) {
-      console.error('Error submitting result:', error);
-    }
-
-    navigate("/result", {
-      state: {
-        quizTitle: quiz.title,
-        totalScore,
-        correct,
-        incorrect: total - correct,
-        total,
-        answers: results,
-        timeTaken,
-        autoSubmitted: autoSubmit,
-      },
-    });
-  };
-
-  // Get time color based on remaining time
+  // Get time color
   const getTimeColor = () => {
-    if (!timeRemaining) return "text-gray-600";
-    const timeLimitMinutes = quiz.timeLimit || 10;
-    const timeLimitSeconds = timeLimitMinutes * 60;
-    const percentage = (timeRemaining / timeLimitSeconds) * 100;
-    
+    if (timeRemaining === null || timeRemaining === undefined) return "text-gray-600";
+    const percentage = quiz.totalTimeSeconds > 0 ? (timeRemaining / quiz.totalTimeSeconds) * 100 : 0;
     if (percentage <= 10) return "text-red-600";
     if (percentage <= 25) return "text-orange-600";
     return "text-indigo-600";
+  };
+
+  const submitAnswer = () => {
+    if (!selectedOption) return;
+
+    // Store the answer
+    setAnswers([...answers, { question: currentQ, userAnswer: selectedOption }]);
+
+    if (currentQuestion === totalQuestions - 1) {
+      // Last question - submit quiz
+      handleSubmitQuiz([...answers, { question: currentQ, userAnswer: selectedOption }]);
+    } else {
+      // Move to next question
+      setCurrentQuestion((prev) => prev + 1);
+      setSelectedOption(null);
+    }
+  };
+
+  const handleSubmitQuiz = async (allAnswers) => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+
+    const correct = allAnswers.reduce((acc, ans) => {
+      return acc + (ans.userAnswer === ans.question.correct_answer ? 1 : 0);
+    }, 0);
+
+    const totalScore = Math.round((correct / totalQuestions) * 100);
+    const results = allAnswers.map((ans) => ({
+      question: ans.question.questionText,
+      answer: ans.userAnswer || "Not answered",
+      isCorrect: ans.userAnswer === ans.question.correct_answer,
+      correctAnswer: ans.question.correct_answer,
+    }));
+
+    try {
+      await axiosInstance.post(
+        "/results/submit",
+        {
+          quiz: quiz._id,
+          score: totalScore,
+          totalQuestions,
+          correctAnswers: correct,
+          timeTaken: timeTaken,
+        }
+      );
+
+      navigate("/result", {
+        state: {
+          quizTitle: quiz.title,
+          totalScore,
+          correct,
+          incorrect: totalQuestions - correct,
+          total: totalQuestions,
+          answers: results,
+          timeTaken,
+          autoSubmitted: false,
+        },
+      });
+    } catch (err) {
+      console.error("Error submitting result:", err);
+      toast.error("Failed to submit quiz. Please try again.");
+      setSubmitting(false);
+    }
   };
 
   if (isTimeUp) {
@@ -282,68 +241,68 @@ const Quiz = () => {
   }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      {/* Header with Timer */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-gray-800">{quiz.title}</h2>
-          <div className={`flex items-center gap-2 font-bold text-lg ${getTimeColor()}`}>
-            <Clock className="w-5 h-5" />
-            <span>{formatTime(timeRemaining || 0)}</span>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+      <div className="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
+        {/* Header */}
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-800 line-clamp-2">{quiz.title}</h2>
+            <div className={`flex items-center gap-1 sm:gap-2 font-bold text-base sm:text-lg whitespace-nowrap ${getTimeColor()}`}>
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>{formatTime(timeRemaining)}</span>
+            </div>
           </div>
+
+          {/* Progress bar */}
+          <div className="w-full bg-gray-200 rounded-full h-2 sm:h-2.5">
+            <div
+              className="h-2 sm:h-2.5 bg-indigo-600 rounded-full transition-all"
+              style={{ width: `${((currentQuestion + 1) / totalQuestions) * 100}%` }}
+            ></div>
+          </div>
+
+          <p className="text-xs sm:text-sm text-gray-600 mt-2 text-center">
+            Question {currentQuestion + 1} of {totalQuestions}
+          </p>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${
-              timeRemaining && (timeRemaining / ((quiz.timeLimit || 10) * 60)) * 100 <= 10
-                ? "bg-red-500"
-                : timeRemaining && (timeRemaining / ((quiz.timeLimit || 10) * 60)) * 100 <= 25
-                ? "bg-orange-500"
-                : "bg-indigo-500"
-            }`}
-            style={{
-              width: `${timeRemaining ? (timeRemaining / ((quiz.timeLimit || 10) * 60)) * 100 : 0}%`,
-            }}
-          />
-        </div>
-        <p className="text-sm text-gray-600 mt-2 text-center">
-          Question {current + 1} of {total}
-        </p>
+
+        {/* Question Section */}
+        <section className="bg-white rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-8 mb-4 sm:mb-6">
+          <div className="mb-6 sm:mb-8">
+            <h3 className="text-base sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6 leading-relaxed">{currentQ.questionText}</h3>
+          </div>
+
+          {/* Answer Options */}
+          <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
+            {shuffledOptions.map((option) => (
+              <button
+                key={option}
+                onClick={() => setSelectedOption(option)}
+                className={`w-full text-left p-3 sm:p-4 rounded-lg border-2 transition-all font-medium text-sm sm:text-base ${
+                  selectedOption === option
+                    ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 bg-gray-50 text-gray-700 hover:border-indigo-300"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+
+          {/* Submit/Next Button */}
+          {selectedOption && (
+            <button
+              onClick={submitAnswer}
+              disabled={submitting}
+              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {submitting ? "Submitting..." : currentQuestion === totalQuestions - 1 ? "Submit Quiz" : "Next"}
+            </button>
+          )}
+        </section>
       </div>
 
-      <QuizCard
-        question={questionObj.question}
-        options={questionObj.options}
-        selectedOption={answers[current]}
-        onSelect={handleSelect}
-      />
-      
-      <div className="flex justify-between items-center mt-6">
-        <button
-          className="bg-gray-300 text-gray-700 px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={() => setCurrent(current - 1)}
-          disabled={current === 0 || isTimeUp}
-        >
-          Previous
-        </button>
-        {current === total - 1 ? (
-          <button
-            className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 disabled:opacity-50"
-            onClick={() => handleSubmit(false)}
-            disabled={isTimeUp}
-          >
-            Submit Quiz
-          </button>
-        ) : (
-          <button
-            className="bg-indigo-700 text-white px-4 py-2 rounded hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => setCurrent(current + 1)}
-            disabled={current === total - 1 || isTimeUp}
-          >
-            Next
-          </button>
-        )}
-      </div>
+      <Footer />
     </div>
   );
 };

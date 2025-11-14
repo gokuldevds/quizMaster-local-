@@ -4,7 +4,6 @@ function Quiz({ questions, onStoreAnswer, onEndQuiz }) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
 
-  // Shuffle options each time the current question changes
   const shuffledOptions = useMemo(() => {
     if (!questions || questions.length === 0) return [];
     const options = [...questions[currentQuestion].incorrect_answers];

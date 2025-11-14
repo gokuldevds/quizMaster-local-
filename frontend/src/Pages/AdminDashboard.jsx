@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import toast from "react-hot-toast";
+import axiosInstance from "../api/axiosInstance";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Users, ListChecks, BarChart3, TrendingUp, Plus, UserCircle, Trash2 } from "lucide-react";
+import { Users, ListChecks, BarChart3, TrendingUp, Plus, UserCircle, Trash2, Mail, Lock } from "lucide-react";
+import ConfirmModal from "../Components/ConfirmModal";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -45,9 +47,13 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateAdmin, setShowCreateAdmin] = useState(false);
   const [newAdmin, setNewAdmin] = useState({ name: "", email: "", password: "" });
+  const [createAdminLoading, setCreateAdminLoading] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [confirmState, setConfirmState] = useState({ isOpen: false, targetId: null, action: null });
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    // Check if user is admin
     if (!authLoading && user && user.role !== "admin") {
       navigate("/quizzes");
       return;
@@ -60,28 +66,18 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const token = localStorage.getItem("token");
-
       if (activeTab === "dashboard") {
         const [statsRes, analyticsRes, quizzesRes] = await Promise.all([
-          axios.get("http://localhost:5000/admin/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get("http://localhost:5000/admin/analytics", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get("http://localhost:5000/admin/recent-quizzes", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          axiosInstance.get("/admin/stats"),
+          axiosInstance.get("/admin/analytics"),
+          axiosInstance.get("/admin/recent-quizzes"),
         ]);
 
         setStats(statsRes.data);
         setAnalytics(analyticsRes.data);
         setRecentQuizzes(quizzesRes.data);
       } else if (activeTab === "users") {
-        const usersRes = await axios.get("http://localhost:5000/admin/users", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const usersRes = await axiosInstance.get("/admin/users");
         setUsersList(usersRes.data);
       }
     } catch (err) {
@@ -91,7 +87,47 @@ const AdminDashboard = () => {
     }
   };
 
-  // Chart data for quiz performance
+  const handleCreateAdminSubmit = async (e) => {
+    e.preventDefault();
+    setCreateAdminLoading(true);
+    try {
+      await axiosInstance.post(
+        "/admin/create-admin",
+        newAdmin
+      );
+      toast.success("Admin user created successfully!");
+      setShowCreateAdmin(false);
+      setNewAdmin({ name: "", email: "", password: "" });
+      if (activeTab === "users") fetchDashboardData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to create admin user");
+    } finally {
+      setCreateAdminLoading(false);
+    }
+  };
+
+  const handleCancelConfirm = () => {
+    setConfirmState({ isOpen: false, targetId: null, action: null });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmState.targetId) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      if (confirmState.action === 'deleteUser') {
+        await axiosInstance.delete(`/admin/users/${confirmState.targetId}`);
+        toast.success("User deleted successfully!");
+        if (activeTab === 'users') fetchDashboardData();
+      }
+    } catch (err) {
+      console.error('Error performing confirm action:', err);
+      toast.error(err.response?.data?.message || 'Action failed');
+    } finally {
+      setConfirmState({ isOpen: false, targetId: null, action: null });
+    }
+  };
+
   const quizPerformanceData = analytics?.quizAnalytics
     ? {
         labels: analytics.quizAnalytics.map((q) => q.quizTitle),
@@ -107,7 +143,6 @@ const AdminDashboard = () => {
       }
     : null;
 
-  // Chart data for daily activity
   const dailyActivityData = analytics?.dailyActivity
     ? {
         labels: analytics.dailyActivity.map((d) => d._id),
@@ -124,7 +159,6 @@ const AdminDashboard = () => {
       }
     : null;
 
-  // Stats distribution chart
   const statsData = stats
     ? {
         labels: ["Quizzes", "Users", "Results"],
@@ -155,7 +189,6 @@ const AdminDashboard = () => {
     );
   }
 
-  // Additional check - redirect if not admin
   if (!user || user.role !== "admin") {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -174,15 +207,30 @@ const AdminDashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-md flex flex-col justify-between">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-white shadow-md flex flex-col justify-between transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out`}>
         <div>
-          <div className="p-6 border-b">
+          <div className="p-6 border-b flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-800">Admin Panel</h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-1 rounded-md hover:bg-gray-100"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
           <nav className="p-4 space-y-2">
             <button
-              onClick={() => setActiveTab("dashboard")}
+              onClick={() => { setActiveTab("dashboard"); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 p-2 rounded-lg ${
                 activeTab === "dashboard"
                   ? "bg-indigo-100 text-indigo-600 font-medium"
@@ -194,17 +242,19 @@ const AdminDashboard = () => {
             <Link
               to="/admin/create-quiz"
               className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 text-gray-700"
+              onClick={() => setSidebarOpen(false)}
             >
               <Plus size={18} /> Create Quiz
             </Link>
             <Link
               to="/admin/quizzes"
               className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 text-gray-700"
+              onClick={() => setSidebarOpen(false)}
             >
               <ListChecks size={18} /> Manage Quizzes
             </Link>
             <button
-              onClick={() => setActiveTab("users")}
+              onClick={() => { setActiveTab("users"); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 p-2 rounded-lg ${
                 activeTab === "users"
                   ? "bg-indigo-100 text-indigo-600 font-medium"
@@ -213,18 +263,7 @@ const AdminDashboard = () => {
             >
               <Users size={18} /> Users
             </button>
-            <button
-              onClick={() => setShowCreateAdmin(true)}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 text-gray-700 border-t border-gray-200 mt-2"
-            >
-              <Plus size={18} /> Create Admin
-            </button>
-            <Link
-              to="/leaderboard"
-              className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 text-gray-700"
-            >
-              <TrendingUp size={18} /> Leaderboard
-            </Link>
+
           </nav>
         </div>
         <div className="p-4 border-t">
@@ -233,22 +272,30 @@ const AdminDashboard = () => {
             <p className="text-xs text-gray-500">{user?.email}</p>
             <p className="text-xs text-indigo-600 font-medium mt-1">👑 Admin</p>
           </div>
-          <Link
-            to="/profile"
-            className="flex items-center gap-3 text-gray-600 hover:text-indigo-600"
-          >
-            <UserCircle size={18} /> Profile
-          </Link>
+
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
+        {/* Mobile header */}
+        <div className="md:hidden flex items-center justify-between mb-6">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-md bg-white shadow-sm border border-gray-200"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="text-xl font-bold text-gray-800">
+            {activeTab === "dashboard" ? "Dashboard" : "Users"}
+          </h1>
+          <div className="w-10" /> {/* Spacer for centering */}
+        </div>
         {activeTab === "dashboard" && (
           <>
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
-            {/* Stats Overview */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 mb-8">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <p className="text-gray-500 text-sm mb-1">Total Quizzes</p>
@@ -268,7 +315,6 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               {dailyActivityData && (
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -322,7 +368,6 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* Recent Quizzes */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <h2 className="text-xl font-semibold mb-4">Recent Quizzes</h2>
               <div className="overflow-x-auto">
@@ -371,97 +416,78 @@ const AdminDashboard = () => {
 
                 {/* Create Admin Modal */}
                 {showCreateAdmin && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-                      <h2 className="text-2xl font-bold mb-4">Create Admin User</h2>
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          try {
-                            const token = localStorage.getItem("token");
-                            await axios.post(
-                              "http://localhost:5000/admin/create-admin",
-                              newAdmin,
-                              {
-                                headers: { Authorization: `Bearer ${token}` },
-                              }
-                            );
-                            alert("Admin user created successfully!");
-                            setShowCreateAdmin(false);
-                            setNewAdmin({ name: "", email: "", password: "" });
-                            if (activeTab === "users") fetchDashboardData();
-                          } catch (error) {
-                            alert(
-                              error.response?.data?.message ||
-                                "Failed to create admin user"
-                            );
-                          }
-                        }}
-                      >
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Name
-                            </label>
-                            <input
-                              type="text"
-                              value={newAdmin.name}
-                              onChange={(e) =>
-                                setNewAdmin({ ...newAdmin, name: e.target.value })
-                              }
-                              className="w-full p-2 border rounded-lg"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Email
-                            </label>
-                            <input
-                              type="email"
-                              value={newAdmin.email}
-                              onChange={(e) =>
-                                setNewAdmin({ ...newAdmin, email: e.target.value })
-                              }
-                              className="w-full p-2 border rounded-lg"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Password
-                            </label>
-                            <input
-                              type="password"
-                              value={newAdmin.password}
-                              onChange={(e) =>
-                                setNewAdmin({ ...newAdmin, password: e.target.value })
-                              }
-                              className="w-full p-2 border rounded-lg"
-                              required
-                              minLength={6}
-                            />
+                  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="w-full max-w-md mx-4">
+                      <div className="bg-white shadow-2xl rounded-2xl overflow-hidden">
+                        <div className="p-6 bg-gradient-to-r from-indigo-600 to-indigo-400 text-white">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                              <UserCircle size={24} />
+                            </div>
+                            <div>
+                              <h2 className="text-2xl font-bold">Create Admin</h2>
+                              <p className="text-sm opacity-90">Add a new administrator account</p>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex gap-3 mt-6">
-                          <button
-                            type="submit"
-                            className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-                          >
-                            Create Admin
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowCreateAdmin(false);
-                              setNewAdmin({ name: "", email: "", password: "" });
-                            }}
-                            className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
+
+                        <form onSubmit={handleCreateAdminSubmit} className="p-8">
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><UserCircle size={16} /></span>
+                              <input
+                                type="text"
+                                value={newAdmin.name}
+                                onChange={(e) => setNewAdmin({ ...newAdmin, name: e.target.value })}
+                                required
+                                className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Mail size={16} /></span>
+                              <input
+                                type="email"
+                                value={newAdmin.email}
+                                onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                                required
+                                className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Lock size={16} /></span>
+                              <input
+                                type={showAdminPassword ? 'text' : 'password'}
+                                value={newAdmin.password}
+                                onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+                                required
+                                minLength={6}
+                                className="w-full pl-10 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              />
+                              <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-indigo-600 hover:text-indigo-700">
+                                {showAdminPassword ? 'Hide' : 'Show'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 mt-6">
+                            <button type="submit" disabled={createAdminLoading} className="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-4 py-2 rounded-lg hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                              {createAdminLoading ? 'Creating...' : 'Create Admin'}
+                            </button>
+                            <button type="button" onClick={() => { setShowCreateAdmin(false); setNewAdmin({ name: '', email: '', password: '' }); }} className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -471,6 +497,7 @@ const AdminDashboard = () => {
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Rank</th>
                       <th className="px-6 py-4 text-left font-semibold text-gray-700">Name</th>
                       <th className="px-6 py-4 text-left font-semibold text-gray-700">Email</th>
                       <th className="px-6 py-4 text-left font-semibold text-gray-700">Role</th>
@@ -491,6 +518,13 @@ const AdminDashboard = () => {
                   <tbody className="divide-y divide-gray-200">
                     {usersList.map((listUser) => (
                       <tr key={listUser._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-gray-700">
+                          {listUser.rank ? (
+                            <span className="font-semibold text-indigo-600">#{listUser.rank}</span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 font-medium text-gray-800">{listUser.name}</td>
                         <td className="px-6 py-4 text-gray-600">{listUser.email}</td>
                         <td className="px-6 py-4">
@@ -509,28 +543,13 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 text-gray-700">{listUser.totalScore}</td>
                         <td className="px-6 py-4">
                           <button
-                            onClick={async () => {
-                              if (
-                                !window.confirm(
-                                  `Are you sure you want to delete ${listUser.name}? This action cannot be undone and will delete all their quiz results.`
-                                )
-                              )
-                                return;
-                              try {
-                                const token = localStorage.getItem("token");
-                                await axios.delete(
-                                  `http://localhost:5000/admin/users/${listUser._id}`,
-                                  {
-                                    headers: { Authorization: `Bearer ${token}` },
-                                  }
-                                );
-                                alert("User deleted successfully!");
-                                fetchDashboardData();
-                              } catch (error) {
-                                alert(
-                                  error.response?.data?.message || "Failed to delete user"
-                                );
-                              }
+                            onClick={() => {
+                              setConfirmState({
+                                isOpen: true,
+                                targetId: listUser._id,
+                                action: 'deleteUser',
+                                message: `Delete ${listUser.name}? This will also delete all their quiz results.`
+                              });
                             }}
                             disabled={listUser._id === user?.id}
                             className={`flex items-center gap-2 px-3 py-1 rounded text-sm transition-colors ${
@@ -551,6 +570,14 @@ const AdminDashboard = () => {
           </>
         )}
       </main>
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.action === 'deleteUser' ? 'Delete user' : 'Confirm'}
+        message={confirmState.message}
+        onCancel={handleCancelConfirm}
+        onConfirm={handleConfirmAction}
+        confirmText={confirmState.action === 'deleteUser' ? 'Delete' : 'Confirm'}
+      />
     </div>
   );
 };

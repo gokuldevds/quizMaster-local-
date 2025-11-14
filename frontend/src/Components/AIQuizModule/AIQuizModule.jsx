@@ -39,7 +39,12 @@ function AIQuizModule() {
   const startQuiz = async ({ topic, difficulty, questionCount }) => {
     setStatus("loading");
 
-    const API_KEY = "AIzaSyA2Gcq-7-_1A-QR8FiIAOG1oY8mHXKkggg"; // move to env in production
+    const API_KEY = import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!API_KEY) {
+      setErrorMessage("API key not configured. Please check your .env file.");
+      setStatus("start");
+      return;
+    }
     const genAI = new GoogleGenerativeAI(API_KEY);
 
     const schema = {

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { User, Trophy, Target, TrendingUp } from "lucide-react";
-import axios from "axios";
+import axiosInstance from "../api/axiosInstance";
+import Footer from "../Components/Footer";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -53,17 +54,11 @@ const Profile = () => {
 
   const fetchUserResults = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.get("http://localhost:5000/results/my-results", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await axiosInstance.get("/results/my-results");
 
       const results = response.data;
       setQuizResults(results);
 
-      // Calculate statistics
       if (results.length > 0) {
         const totalScore = results.reduce((sum, r) => sum + (r.score || 0), 0);
         const averageScore = Math.round(totalScore / results.length);
@@ -81,6 +76,7 @@ const Profile = () => {
     }
   };
 
+  // Prepare chart data for score over time
   // Prepare chart data for score over time
   const scoreOverTimeData = quizResults.length > 0
     ? {
@@ -104,7 +100,6 @@ const Profile = () => {
       }
     : null;
 
-  // Prepare chart data for performance distribution
   const performanceData = quizResults.length > 0
     ? {
         labels: ["Excellent (90-100)", "Good (70-89)", "Fair (50-69)", "Needs Improvement (<50)"],
@@ -134,7 +129,6 @@ const Profile = () => {
       }
     : null;
 
-  // Quiz scores bar chart
   const quizScoresData = quizResults.length > 0
     ? {
         labels: quizResults
@@ -386,6 +380,7 @@ const Profile = () => {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   );
 };

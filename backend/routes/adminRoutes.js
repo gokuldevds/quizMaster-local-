@@ -4,6 +4,7 @@ const { protect, adminOnly } = require("../middleware/authMiddleware");
 const User = require("../models/userModel");
 const Quiz = require("../models/quizModel");
 const Result = require("../models/resultModel");
+const { calculateAndUpdateRanks } = require("../utils/rankCalculator");
 
 // All admin routes require authentication and admin role
 router.use(protect, adminOnly);
@@ -83,36 +84,40 @@ router.get("/users", async (req, res) => {
       .select("-password")
       .sort({ createdAt: -1 });
 
-    // Get user statistics
-    const usersWithStats = await Promise.all(
-      users.map(async (user) => {
-        const results = await Result.find({ user: user._id });
-        const totalQuizzes = results.length;
-        const avgScore =
-          totalQuizzes > 0
-            ? Math.round(
-                results.reduce((sum, r) => sum + r.score, 0) / totalQuizzes
-              )
-            : 0;
-        const totalScore = results.reduce((sum, r) => sum + r.score, 0);
-
-        return {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          createdAt: user.createdAt,
-          totalQuizzes,
-          avgScore,
-          totalScore,
-        };
-      })
-    );
+    // Get user statistics from stored quizStats
+    const usersWithStats = users.map((user) => {
+      const stats = user.quizStats || {};
+      return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+        totalQuizzes: stats.quizzesAttended || 0,
+        avgScore: stats.averageScore || 0,
+        totalScore: stats.totalScore || 0,
+        rank: stats.rank || null,
+      };
+    });
 
     res.json(usersWithStats);
   } catch (err) {
     console.error("Get users error:", err);
     res.status(500).json({ message: "Failed to fetch users", error: err.message });
+  }
+});
+
+// Recalculate all user ranks (admin endpoint)
+router.post("/recalculate-ranks", async (req, res) => {
+  try {
+    const count = await calculateAndUpdateRanks();
+    res.json({
+      message: "Ranks recalculated successfully",
+      usersUpdated: count,
+    });
+  } catch (err) {
+    console.error("Recalculate ranks error:", err);
+    res.status(500).json({ message: "Failed to recalculate ranks", error: err.message });
   }
 });
 
@@ -277,6 +282,9 @@ router.delete("/users/:id", async (req, res) => {
 
     // Delete the user
     await User.findByIdAndDelete(userId);
+
+    // Recalculate ranks after deletion
+    await calculateAndUpdateRanks();
 
     res.json({
       message: "User deleted successfully",

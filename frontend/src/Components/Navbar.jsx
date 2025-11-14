@@ -1,28 +1,13 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
-import { Search, User } from "lucide-react";
-
-const quizSuggestions = [
-  { id: 5, title: "JavaScript Basics" },
-  { id: 1, title: "React Basics" },
-  { id: 6, title: "HTML & CSS Essentials" },
-  { id: 4, title: "Node.js Fundamentals" },
-  { id: 3, title: "MongoDB Concepts" },
-  { id: 2, title: "JavaScript Advanced" }
-];
+import { User } from "lucide-react";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  const filteredSuggestions = quizSuggestions.filter(q =>
-    q.title.toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
     <nav className="bg-white border-b border-gray-200 shadow-sm px-4 md:px-6 py-3">
@@ -41,11 +26,13 @@ const Navbar = () => {
 
         {/* Navigation Links */}
         <ul className="hidden md:flex items-center gap-6 text-sm text-gray-600">
-          <li>
-            <Link to="/" className="hover:text-blue-600">
-              Home
-            </Link>
-          </li>
+          {(!user || user.role !== "admin") && (
+            <li>
+              <Link to="/" className="hover:text-blue-600">
+                Home
+              </Link>
+            </li>
+          )}
           {/* Hide quiz-related links for admins */}
           {(!user || user.role !== "admin") && (
             <>
@@ -83,49 +70,11 @@ const Navbar = () => {
         </ul>
       </div>
 
-      {/* Right: Search + Auth */}
-      <div className="hidden md:flex items-center gap-4">
-        {/* Search Bar (always visible) */}
-        <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-full relative">
-          <Search className="w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search quizzes..."
-            className="bg-transparent outline-none text-sm text-gray-700 w-40"
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              setShowSuggestions(true);
-            }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-          />
-          {showSuggestions && search && (
-            <div className="absolute top-10 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-              {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map((suggestion, idx) => (
-                  <div
-                    key={idx}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer"
-                    onMouseDown={() => {
-                      setSearch("");
-                      setShowSuggestions(false);
-                      navigate(`/quizzes#${suggestion.id}`);
-                    }}
-                  >
-                    {suggestion.title}
-                  </div>
-                ))
-              ) : (
-                <div className="px-4 py-2 text-sm text-gray-400">No matches found</div>
-              )}
-            </div>
-          )}
-        </div>
-
+      {/* Right: Auth */}
+      <div className="flex items-center gap-2 md:gap-4">
         {/* Auth / Profile */}
         {!user ? (
-          <div className="flex gap-3">
+          <div className="hidden sm:flex gap-3">
             <Link
               to="/login"
               className="text-blue-600 border border-blue-600 px-3 py-1 rounded hover:bg-blue-600 hover:text-white transition"
@@ -143,11 +92,12 @@ const Navbar = () => {
           <div className="relative">
             <button
               onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 p-1 md:p-0"
             >
               <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm text-white border border-gray-200">
                 {user.name ? user.name[0].toUpperCase() : <User className="w-4 h-4" />}
               </div>
+              <span className="hidden md:block text-sm text-gray-700">{user.name}</span>
             </button>
 
             {showDropdown && (
@@ -160,6 +110,7 @@ const Navbar = () => {
                   <Link
                     to="/admin"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-indigo-600"
+                    onClick={() => setShowDropdown(false)}
                   >
                     Admin Dashboard
                   </Link>
@@ -167,12 +118,13 @@ const Navbar = () => {
                   <Link
                     to="/profile"
                     className="block px-4 py-2 text-sm hover:bg-gray-100"
+                    onClick={() => setShowDropdown(false)}
                   >
                     Profile
                   </Link>
                 )}
                 <button
-                  onClick={logout}
+                  onClick={() => { logout(); setShowDropdown(false); }}
                   className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
                 >
                   Logout
@@ -187,45 +139,6 @@ const Navbar = () => {
 
       {/* Mobile controls */}
       <div className="flex md:hidden items-center justify-between mt-3">
-        {/* Search (compact) */}
-        <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-full relative flex-1 mr-3">
-          <Search className="w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-transparent outline-none text-sm text-gray-700 w-full"
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value);
-              setShowSuggestions(true);
-            }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-          />
-          {showSuggestions && search && (
-            <div className="absolute top-10 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-              {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map((suggestion, idx) => (
-                  <div
-                    key={idx}
-                    className="px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer"
-                    onMouseDown={() => {
-                      setSearch("");
-                      setShowSuggestions(false);
-                      navigate(`/quizzes#${suggestion.id}`);
-                      setMobileOpen(false);
-                    }}
-                  >
-                    {suggestion.title}
-                  </div>
-                ))
-              ) : (
-                <div className="px-4 py-2 text-sm text-gray-400">No matches found</div>
-              )}
-            </div>
-          )}
-        </div>
-
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
@@ -240,7 +153,9 @@ const Navbar = () => {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden mt-3 border-t border-gray-200 pt-3 space-y-2">
-          <Link to="/" className="block px-2 py-2 text-gray-700 hover:bg-gray-50 rounded" onClick={() => setMobileOpen(false)}>Home</Link>
+          {(!user || user.role !== "admin") && (
+            <Link to="/" className="block px-2 py-2 text-gray-700 hover:bg-gray-50 rounded" onClick={() => setMobileOpen(false)}>Home</Link>
+          )}
           {(!user || user.role !== "admin") && (
             <>
               <Link to="/quizzes" className="block px-2 py-2 text-gray-700 hover:bg-gray-50 rounded" onClick={() => setMobileOpen(false)}>Quizzes</Link>

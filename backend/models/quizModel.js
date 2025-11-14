@@ -11,6 +11,7 @@ const quizSchema = new mongoose.Schema(
       default: "easy",
     },
     timeLimit: { type: Number, default: 10 }, // Time limit in minutes
+    isFeatured: { type: Boolean, default: false }, // Featured quiz flag
     questions: [
       {
         type: mongoose.Schema.Types.ObjectId,

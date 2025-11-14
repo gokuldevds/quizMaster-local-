@@ -41,6 +41,29 @@ const userSchema = new mongoose.Schema(
         },
       },
     ],
+    // Quiz statistics for leaderboard
+    quizStats: {
+      quizzesAttended: {
+        type: Number,
+        default: 0,
+      },
+      totalScore: {
+        type: Number,
+        default: 0,
+      },
+      averageScore: {
+        type: Number,
+        default: 0,
+      },
+      rank: {
+        type: Number,
+        default: null,
+      },
+      lastUpdated: {
+        type: Date,
+        default: Date.now,
+      },
+    },
     createdAt: {
       type: Date,
       default: Date.now,

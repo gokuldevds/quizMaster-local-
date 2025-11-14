@@ -13,6 +13,7 @@ import Profile from "./Pages/Profile";
 import AdminDashboard from "./Pages/AdminDashboard";
 import CreateQuiz from "./Pages/CreateQuiz";
 import ManageQuizzes from "./Pages/ManageQuizzes";
+import EditQuiz from "./Pages/EditQuiz";
 import ForgotPassword from "./Pages/ForgotPassword";
 import Result from "./Pages/Result";
 import AIQuizModule from "./Components/AIQuizModule/AIQuizModule";
@@ -72,14 +73,7 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route
-              path="/quizzes"
-              element={
-                <PrivateRoute>
-                  <Quizzes />
-                </PrivateRoute>
-              }
-            />
+            
             <Route
               path="/profile"
               element={
@@ -119,6 +113,14 @@ function App() {
               element={
                 <AdminRoute>
                   <ManageQuizzes />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/edit-quiz/:id"
+              element={
+                <AdminRoute>
+                  <EditQuiz />
                 </AdminRoute>
               }
             />

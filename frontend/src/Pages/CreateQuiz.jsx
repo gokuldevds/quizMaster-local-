@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
+import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import axios from "axios";
+import axiosInstance from "../api/axiosInstance";
 import { Plus, Save, X } from "lucide-react";
 import AIQuestionAssistant from "../Components/AIQuestionAssistant";
 
@@ -11,7 +12,6 @@ const CreateQuiz = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Redirect if not admin
   useEffect(() => {
     if (!authLoading && user && user.role !== "admin") {
       navigate("/quizzes");
@@ -23,6 +23,9 @@ const CreateQuiz = () => {
     description: "",
     category: "",
     difficulty: "easy",
+  isFeatured: false,
+  timeLimit: "", // numeric value (minutes or seconds depending on timeUnit). Leave empty to use 10s per question default
+  timeUnit: "minutes", // 'minutes' or 'seconds'
     questions: [
       {
         questionText: "",
@@ -54,9 +57,7 @@ const CreateQuiz = () => {
 
   const handleCorrectAnswer = (qIndex, oIndex) => {
     const updatedQuestions = [...quizData.questions];
-    // Reset all options to false
     updatedQuestions[qIndex].options.forEach((opt) => (opt.isCorrect = false));
-    // Set selected option to true
     updatedQuestions[qIndex].options[oIndex].isCorrect = true;
     setQuizData({ ...quizData, questions: updatedQuestions });
   };
@@ -92,8 +93,6 @@ const CreateQuiz = () => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-
       // Validate quiz data
       if (!quizData.title.trim()) {
         throw new Error("Quiz title is required");
@@ -118,42 +117,44 @@ const CreateQuiz = () => {
       }
 
       // First, create the quiz
-      const quizResponse = await axios.post(
-        "http://localhost:5000/quizzes",
-        {
-          title: quizData.title,
-          description: quizData.description,
-          category: quizData.category,
-          difficulty: quizData.difficulty,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      const quizPayload = {
+        title: quizData.title,
+        description: quizData.description,
+        category: quizData.category,
+        difficulty: quizData.difficulty,
+        isFeatured: quizData.isFeatured,
+      };
+
+      // If admin provided a timeLimit, include it as minutes in the payload (backend stores minutes)
+      if (quizData.timeLimit !== undefined && quizData.timeLimit !== null && quizData.timeLimit !== "") {
+        const raw = Number(quizData.timeLimit);
+        if (isNaN(raw) || raw <= 0) throw new Error('Time limit must be a positive number');
+        // Convert to minutes if admin entered seconds
+        const minutesValue = quizData.timeUnit === "seconds" ? raw / 60 : raw;
+        quizPayload.timeLimit = minutesValue;
+      }
+
+      const quizResponse = await axiosInstance.post(
+        "/quizzes",
+        quizPayload
       );
 
       const quizId = quizResponse.data._id;
 
       // Then, create all questions for this quiz
       const questionPromises = quizData.questions.map((question) =>
-        axios.post(
-          `http://localhost:5000/questions/${quizId}`,
+        axiosInstance.post(
+          `/questions/${quizId}`,
           {
             questionText: question.questionText,
             options: question.options,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
           }
         )
       );
 
       await Promise.all(questionPromises);
 
-      alert("Quiz created successfully!");
+      toast.success("Quiz created successfully!");
       navigate("/admin");
     } catch (err) {
       console.error("Error creating quiz:", err);
@@ -225,6 +226,46 @@ const CreateQuiz = () => {
                   <option value="hard">Hard</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time Limit
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={quizData.timeLimit}
+                    onChange={(e) => handleQuizChange("timeLimit", e.target.value)}
+                    className="w-2/3 p-2 border border-gray-300 rounded-md"
+                    placeholder="Leave empty to default"
+                  />
+                  <select
+                    value={quizData.timeUnit}
+                    onChange={(e) => handleQuizChange("timeUnit", e.target.value)}
+                    className="w-1/3 p-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="minutes">Minutes</option>
+                    <option value="seconds">Seconds</option>
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional. If left empty, total quiz time will default to 10 seconds per question ({quizData.questions.length * 10} seconds for {quizData.questions.length} questions).
+                  If you set a value, pick whether the number is in minutes or seconds.
+                </p>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isFeatured"
+                  checked={quizData.isFeatured}
+                  onChange={(e) => handleQuizChange("isFeatured", e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="isFeatured" className="ml-2 block text-sm font-medium text-gray-700">
+                  ⭐ Mark as Featured Quiz
+                </label>
+              </div>
             </div>
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -244,9 +285,17 @@ const CreateQuiz = () => {
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Questions</h2>
+              
               <div className="flex items-center gap-3">
                 <AIQuestionAssistant
                   onSelectQuestion={(question) => {
+                    // Check for duplicate questions
+                    const isDuplicate = quizData.questions.some(q => q.questionText.toLowerCase() === question.question.toLowerCase());
+                    if (isDuplicate) {
+                      toast.error("This question already exists in the quiz");
+                      return;
+                    }
+
                     const newQuestions = [...quizData.questions];
                     newQuestions.push({
                       questionText: question.question,
@@ -266,8 +315,11 @@ const CreateQuiz = () => {
                   <Plus size={16} /> Add Question
                 </button>
               </div>
+              
             </div>
-
+<p className="text-xs text-gray-500 m-1">
+                  Select the correct answer from the options.
+                </p>
             {quizData.questions.map((question, qIndex) => (
               <div key={qIndex} className="border border-gray-200 rounded-md p-4 mb-4">
                 <div className="flex justify-between items-center mb-3">

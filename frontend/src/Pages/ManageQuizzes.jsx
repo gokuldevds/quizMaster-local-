@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import toast from "react-hot-toast";
+import axiosInstance from "../api/axiosInstance";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Edit, Trash2, Plus, ArrowLeft } from "lucide-react";
+import ConfirmModal from "../Components/ConfirmModal";
 
 const ManageQuizzes = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmState, setConfirmState] = useState({ isOpen: false, targetId: null, message: '' });
 
   useEffect(() => {
-    // Redirect if not admin
     if (!authLoading && user && user.role !== "admin") {
       navigate("/quizzes");
       return;
@@ -24,10 +26,7 @@ const ManageQuizzes = () => {
 
   const fetchQuizzes = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.get("http://localhost:5000/quizzes", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await axiosInstance.get("/quizzes");
       setQuizzes(response.data);
     } catch (error) {
       console.error("Error fetching quizzes:", error);
@@ -36,21 +35,20 @@ const ManageQuizzes = () => {
     }
   };
 
-  const handleDelete = async (quizId) => {
-    if (!window.confirm("Are you sure you want to delete this quiz? This action cannot be undone.")) {
-      return;
-    }
+  const handleDelete = (quizId) => {
+    setConfirmState({ isOpen: true, targetId: quizId, message: 'This action cannot be undone.' });
+  };
 
+  const performDelete = async (quizId) => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`http://localhost:5000/quizzes/${quizId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      alert("Quiz deleted successfully!");
+      await axiosInstance.delete(`/quizzes/${quizId}`);
+      toast.success("Quiz deleted successfully!");
       fetchQuizzes();
     } catch (error) {
       console.error("Error deleting quiz:", error);
-      alert("Failed to delete quiz");
+      toast.error("Failed to delete quiz");
+    } finally {
+      setConfirmState({ isOpen: false, targetId: null, message: '' });
     }
   };
 
@@ -63,28 +61,29 @@ const ManageQuizzes = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => navigate("/admin")}
-              className="text-gray-600 hover:text-gray-800"
+              className="text-gray-600 hover:text-gray-800 p-1"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
-            <h1 className="text-3xl font-bold text-gray-800">Manage Quizzes</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manage Quizzes</h1>
           </div>
           <button
             onClick={() => navigate("/admin/create-quiz")}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm sm:text-base whitespace-nowrap"
           >
-            <Plus className="w-5 h-5" />
-            Create New Quiz
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            Create New
           </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        {/* Desktop View - Table */}
+        <div className="hidden lg:block bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full min-w-[720px]">
             <thead className="bg-indigo-600 text-white">
@@ -146,7 +145,73 @@ const ManageQuizzes = () => {
             </div>
           )}
         </div>
+
+        {/* Mobile/Tablet View - Cards */}
+        <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+          {quizzes.map((quiz) => (
+            <div key={quiz._id} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow p-4 sm:p-6">
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-base sm:text-lg font-bold text-gray-800 line-clamp-2 flex-1">{quiz.title}</h3>
+                <div className="flex gap-2 flex-shrink-0 ml-2">
+                  <button
+                    onClick={() => navigate(`/admin/edit-quiz/${quiz._id}`)}
+                    className="text-indigo-600 hover:text-indigo-800 p-1"
+                    title="Edit Quiz"
+                  >
+                    <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(quiz._id)}
+                    className="text-red-600 hover:text-red-800 p-1"
+                    title="Delete Quiz"
+                  >
+                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Category:</span>
+                  <span className="font-medium text-gray-800">{quiz.category || "N/A"}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Difficulty:</span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      quiz.difficulty === "easy"
+                        ? "bg-green-100 text-green-700"
+                        : quiz.difficulty === "medium"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {quiz.difficulty || "easy"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Questions:</span>
+                  <span className="font-medium text-gray-800">{quiz.questions?.length || 0}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {quizzes.length === 0 && (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              No quizzes found. Create your first quiz!
+            </div>
+          )}
+        </div>
       </div>
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title="Delete Quiz"
+        message={confirmState.message || 'Are you sure you want to delete this quiz?'}
+        onCancel={() => setConfirmState({ isOpen: false, targetId: null, message: '' })}
+        onConfirm={() => performDelete(confirmState.targetId)}
+        confirmText="Delete"
+        blur={true}
+      />
     </div>
   );
 };

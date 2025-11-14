@@ -1,210 +1,267 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import axiosInstance from "../api/axiosInstance";
+import { Search, SlidersHorizontal } from "lucide-react";
+import Footer from "../Components/Footer";
 
 const Quizzes = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [difficulty, setDifficulty] = useState("all");
+  const [sortBy, setSortBy] = useState("recent");
 
-  // Redirect admins to admin dashboard
   useEffect(() => {
     if (!authLoading && user && user.role === "admin") {
       navigate("/admin", { replace: true });
     }
   }, [user, authLoading, navigate]);
 
-  // ✅ Add dummy quiz data for display
+  // Fetch quizzes from API
   useEffect(() => {
-    const dummyData = [
-      {
-        id: 5,
-        title: "JavaScript Basics",
-        questions: 10,
-        difficulty: "Easy",
-        quizQuestions: [
-          {
-            question: "Which of the following is a JavaScript data type?",
-            options: ["Number", "String", "Boolean", "All of the above"],
-            correctAnswer: "All of the above"
-          },
-          {
-            question: "Which symbol is used for single-line comments?",
-            options: ["//", "/*", "<!--", "#"],
-            correctAnswer: "//"
-          },
-          {
-            question: "How do you declare a variable in JavaScript?",
-            options: ["var", "let", "const", "All of the above"],
-            correctAnswer: "All of the above"
-          },
-          // ...add more questions
-        ]
-      },
-      {
-        id: 1,
-        title: "React Basics",
-        questions: 12,
-        difficulty: "Easy",
-        quizQuestions: [
-          {
-            question: "What is a React component?",
-            options: ["A function", "A variable", "A class", "All of the above"],
-            correctAnswer: "All of the above"
-          },
-          {
-            question: "What hook is used for state management?",
-            options: ["useEffect", "useState", "useContext", "useReducer"],
-            correctAnswer: "useState"
-          },
-          {
-            question: "What is JSX?",
-            options: ["A CSS preprocessor", "A JavaScript extension", "A database", "A server"],
-            correctAnswer: "A JavaScript extension"
-          },
-          // ...add more questions
-        ]
-      },
-      {
-        id: 2,
-        title: "JavaScript Advanced",
-        questions: 18,
-        difficulty: "Medium",
-        quizQuestions: [
-          {
-            question: "Which method creates a new array from a filtered subset?",
-            options: ["map", "filter", "reduce", "forEach"],
-            correctAnswer: "filter"
-          },
-          {
-            question: "What is a closure?",
-            options: ["A function inside a function", "A variable", "A loop", "A class"],
-            correctAnswer: "A function inside a function"
-          },
-          {
-            question: "Which keyword declares a block-scoped variable?",
-            options: ["var", "let", "const", "static"],
-            correctAnswer: "let"
-          },
-          // ...add more questions
-        ]
-      },
-      {
-        id: 3,
-        title: "MongoDB Concepts",
-        questions: 15,
-        difficulty: "Hard",
-        quizQuestions: [
-          {
-            question: "What is MongoDB?",
-            options: ["Relational DB", "NoSQL DB", "Frontend framework", "Server"],
-            correctAnswer: "NoSQL DB"
-          },
-          {
-            question: "Which command inserts a document?",
-            options: ["insertOne", "addDoc", "putDoc", "create"],
-            correctAnswer: "insertOne"
-          },
-          {
-            question: "What is a collection?",
-            options: ["A table", "A group of documents", "A schema", "A query"],
-            correctAnswer: "A group of documents"
-          },
-          // ...add more questions
-        ]
-      },
-      {
-        id: 4,
-        title: "Node.js Fundamentals",
-        questions: 10,
-        difficulty: "Easy",
-        quizQuestions: [
-          {
-            question: "Node.js is based on which language?",
-            options: ["Python", "Java", "JavaScript", "C++"],
-            correctAnswer: "JavaScript"
-          },
-          {
-            question: "Which module is used for file operations?",
-            options: ["http", "fs", "path", "os"],
-            correctAnswer: "fs"
-          },
-          {
-            question: "What is npm?",
-            options: ["Node Package Manager", "Node Project Module", "New Programming Method", "None"],
-            correctAnswer: "Node Package Manager"
-          },
-          // ...add more questions
-        ]
-      },
-      {
-        id: 6,
-        title: "HTML & CSS Essentials",
-        questions: 12,
-        difficulty: "Easy",
-        quizQuestions: [
-          {
-            question: "What does HTML stand for?",
-            options: ["Hyper Trainer Marking Language", "Hyper Text Markup Language", "Hyper Text Marketing Language", "Hyper Tool Markup Language"],
-            correctAnswer: "Hyper Text Markup Language"
-          },
-          {
-            question: "Which tag is used for the largest heading?",
-            options: ["<h1>", "<h6>", "<head>", "<header>"],
-            correctAnswer: "<h1>"
-          },
-          {
-            question: "Which property is used to change text color in CSS?",
-            options: ["font-color", "text-color", "color", "background-color"],
-            correctAnswer: "color"
-          },
-          // ...add more questions
-        ]
+    const fetchQuizzes = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const token = localStorage.getItem("token");
+        
+        if (!token) {
+          setError("Please log in to view quizzes");
+          setLoading(false);
+          return;
+        }
+
+        const response = await axiosInstance.get("/quizzes");
+
+        // Map API response to component format
+        const formattedQuizzes = response.data.map((quiz) => {
+          const questionsCount = Array.isArray(quiz.questions) ? quiz.questions.length : 0;
+          // If backend provides timeLimit (in minutes), use that. Otherwise default to 1 minute (60s).
+          const totalTimeSeconds = quiz.timeLimit ? Number(quiz.timeLimit) * 60 : 60;
+
+          // Format display: if >= 60s show Xm Ys or Xm when exact minutes, else show Xs
+          const formatTime = (seconds) => {
+            if (!seconds && seconds !== 0) return null;
+            if (seconds < 60) return `${seconds}s`;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            if (secs === 0) return `${mins} min`;
+            return `${mins}m ${secs}s`;
+          };
+
+          return {
+            id: quiz._id,
+            title: quiz.title,
+            questions: questionsCount,
+            difficulty: quiz.difficulty || "Easy",
+            category: quiz.category || "",
+            description: quiz.description || "",
+            // keep original minute value if provided
+            timeLimitMinutes: quiz.timeLimit ?? null,
+            totalTimeSeconds,
+            timeDisplay: formatTime(totalTimeSeconds),
+            _id: quiz._id, // Keep original _id for API calls
+            createdAt: quiz.createdAt || null,
+          };
+        });
+
+        setQuizzes(formattedQuizzes);
+      } catch (err) {
+        console.error("Error fetching quizzes:", err);
+        setError(err.response?.data?.message || "Failed to load quizzes");
+      } finally {
+        setLoading(false);
       }
-    ];
-    setQuizzes(dummyData);
-  }, []);
+    };
+
+    if (!authLoading) {
+      fetchQuizzes();
+    }
+  }, [authLoading]);
 
   // If navigated with a hash, filter to only that quiz
   const quizIdFromHash = location.hash ? location.hash.replace('#', '') : null;
-  const filteredQuizzes = quizIdFromHash
-    ? quizzes.filter(q => String(q.id) === quizIdFromHash)
+  const filteredByHash = quizIdFromHash
+    ? quizzes.filter(q => String(q.id) === quizIdFromHash || String(q._id) === quizIdFromHash)
     : quizzes;
+
+  // Derived list: search, difficulty, sort
+  const visibleQuizzes = useMemo(() => {
+    let list = [...filteredByHash];
+
+    // search by title/category/description
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      list = list.filter(q =>
+        q.title?.toLowerCase().includes(term) ||
+        q.category?.toLowerCase().includes(term) ||
+        q.description?.toLowerCase().includes(term)
+      );
+    }
+
+    // filter by difficulty
+    if (difficulty !== "all") {
+      list = list.filter(q => (q.difficulty || "").toLowerCase() === difficulty);
+    }
+
+    // sort
+    if (sortBy === "recent") {
+      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    } else if (sortBy === "questions-desc") {
+      list.sort((a, b) => (b.questions || 0) - (a.questions || 0));
+    } else if (sortBy === "questions-asc") {
+      list.sort((a, b) => (a.questions || 0) - (b.questions || 0));
+    } else if (sortBy === "title") {
+      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    }
+
+    return list;
+  }, [filteredByHash, search, difficulty, sortBy]);
+
+  if (loading) {
+    return (
+      <div className="p-8 bg-gray-50 min-h-screen">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div className="h-9 w-48 bg-gray-200 animate-pulse rounded" />
+            <div className="h-9 w-56 bg-gray-200 animate-pulse rounded" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="h-6 w-2/3 bg-gray-200 animate-pulse rounded mb-3" />
+                <div className="h-4 w-1/3 bg-gray-200 animate-pulse rounded mb-1" />
+                <div className="h-4 w-1/2 bg-gray-200 animate-pulse rounded mb-4" />
+                <div className="h-10 w-full bg-gray-200 animate-pulse rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
-      <h1 className="text-3xl font-semibold text-center text-indigo-700 mb-8">
-        Available Quizzes
-      </h1>
-      {Array.isArray(filteredQuizzes) && filteredQuizzes.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredQuizzes.map((quiz) => (
-            <div
-              key={quiz.id}
-              className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg transition"
-            >
-              <h2 className="text-xl font-bold text-gray-800 mb-2">
-                {quiz.title}
-              </h2>
-              <p className="text-gray-600 mb-1">
-                Questions: {quiz.questions}
-              </p>
-              <p className="text-gray-600 mb-4">
-                Difficulty: {quiz.difficulty}
-              </p>
-              <button
-                className="bg-indigo-700 text-white py-2 px-4 rounded hover:bg-indigo-800 transition"
-                onClick={() => navigate(`/quiz/${quiz.id}`)}
-              >
-                Start Quiz
-              </button>
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+          <h1 className="text-3xl font-semibold text-indigo-700">Available Quizzes</h1>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search quizzes..."
+                className="pl-10 pr-4 py-2 w-full sm:w-72 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             </div>
-          ))}
+            <div className="flex gap-3">
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="bg-white border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                title="Filter by difficulty"
+              >
+                <option value="all">All Difficulties</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-white border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                title="Sort by"
+              >
+                <option value="recent">Most Recent</option>
+                <option value="questions-desc">Questions: High to Low</option>
+                <option value="questions-asc">Questions: Low to High</option>
+                <option value="title">Title A→Z</option>
+              </select>
+            </div>
+          </div>
         </div>
-      ) : (
-        <p className="text-center text-gray-600">No quizzes available.</p>
-      )}
+
+        {Array.isArray(visibleQuizzes) && visibleQuizzes.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {visibleQuizzes.map((quiz) => (
+              <div
+                key={quiz.id || quiz._id}
+                className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition p-6 flex flex-col"
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <h2 className="text-lg font-bold text-gray-800 line-clamp-2 flex-1">{quiz.title}</h2>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium capitalize whitespace-nowrap ${
+                      (quiz.difficulty || "easy").toLowerCase() === "easy"
+                        ? "bg-green-100 text-green-700"
+                        : (quiz.difficulty || "").toLowerCase() === "medium"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {quiz.difficulty || "easy"}
+                  </span>
+                </div>
+                {quiz.description && (
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">{quiz.description}</p>
+                )}
+                <div className="flex items-center gap-4 text-sm text-gray-600 mb-4 flex-wrap">
+                  {quiz.category && (
+                    <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs">
+                      {quiz.category}
+                    </span>
+                  )}
+                  <span>{quiz.questions} questions</span>
+                  {quiz.timeDisplay ? <span>{quiz.timeDisplay}</span> : null}
+                </div>
+                <button
+                  className="mt-auto bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition w-full"
+                  onClick={() => navigate(`/quiz/${quiz.id || quiz._id}`)}
+                >
+                  Start Quiz
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
+            <SlidersHorizontal className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-700 font-medium mb-1">No quizzes match your filters</p>
+            <p className="text-gray-500 text-sm mb-4">Try clearing the search or changing filters.</p>
+            <button
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition"
+              onClick={() => { setSearch(""); setDifficulty("all"); setSortBy("recent"); }}
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
+      </div>
+      <Footer />
     </div>
   );
 };

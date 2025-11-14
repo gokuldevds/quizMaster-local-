@@ -1,28 +1,53 @@
 import { useEffect, useState } from "react";
-import { Trophy, User } from "lucide-react";
+import { Trophy, User, RefreshCw } from "lucide-react";
+import Footer from "../Components/Footer";
 
 const LeaderBoard = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const fetchLeaderboard = async (isManualRefresh = false) => {
+    try {
+      if (isManualRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      const response = await fetch("http://localhost:5000/results/leaderboard");
+      if (!response.ok) throw new Error("Failed to fetch leaderboard");
+      const data = await response.json();
+      setLeaderboard(data);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      console.error("Error fetching leaderboard:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        const response = await fetch("http://localhost:5000/results/leaderboard");
-        if (!response.ok) throw new Error("Failed to fetch leaderboard");
-        const data = await response.json();
-        console.log("Leaderboard data:", data); // Debug log
-        setLeaderboard(data);
-      } catch (err) {
-        setError(err.message);
-        console.error("Error fetching leaderboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchLeaderboard();
+
+    const interval = setInterval(() => {
+      fetchLeaderboard();
+    }, 30000);
+
+    const handleFocus = () => {
+      fetchLeaderboard();
+    };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   if (loading) {
@@ -61,9 +86,24 @@ const LeaderBoard = () => {
             <Trophy className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Leaderboard</h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-4">
             Top performers from all quiz attempts
           </p>
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={() => fetchLeaderboard(true)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            {lastUpdated && (
+              <span className="text-sm text-gray-500">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Simple Table */}
@@ -80,18 +120,19 @@ const LeaderBoard = () => {
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[800px]">
               <thead className="bg-indigo-600 text-white">
                 <tr>
                   <th className="px-6 py-4 text-left font-semibold">Rank</th>
                   <th className="px-6 py-4 text-left font-semibold">User</th>
                   <th className="px-6 py-4 text-left font-semibold">Total Score</th>
+                  <th className="px-6 py-4 text-left font-semibold">Avg Score</th>
                   <th className="px-6 py-4 text-left font-semibold">Quizzes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {leaderboard.map((user, index) => {
-                  const rank = index + 1;
+                  const rank = user.rank !== null && user.rank !== undefined ? user.rank : index + 1;
                   return (
                     <tr
                       key={user.email || index}
@@ -134,10 +175,17 @@ const LeaderBoard = () => {
                         </div>
                       </td>
 
-                      {/* Score */}
+                      {/* Total Score */}
                       <td className="px-6 py-4">
                         <span className="font-bold text-gray-800">
                           {user.totalScore || 0}
+                        </span>
+                      </td>
+
+                      {/* Average Score */}
+                      <td className="px-6 py-4">
+                        <span className="text-gray-700 font-medium">
+                          {user.avgScore || 0}%
                         </span>
                       </td>
 
@@ -163,6 +211,7 @@ const LeaderBoard = () => {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   );
 };
