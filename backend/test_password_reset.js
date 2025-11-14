@@ -6,7 +6,7 @@ const User = require('./models/userModel');
 async function testPasswordReset() {
   try {
     // Connect to DB directly
-    const mongo_url = process.env.MONGO_URL || 'mongodb+srv://roshanwilson024:zQYlZhMxyQu0q87u@cluster0.krulohd.mongodb.net/QuizMaster?appName=Cluster0';
+    const mongo_url = process.env.MONGO_URL 
     await mongoose.connect(mongo_url);
     console.log('Connected to MongoDB');
 
